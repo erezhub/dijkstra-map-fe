@@ -16,9 +16,16 @@ interface Props {
   result: PathResult | null
   error: string | null
   onClear: () => void
+  onSave?: () => void
+  saving?: boolean
+  saved?: boolean
+  saveError?: string | null
 }
 
-export default function PathPanel({ pathFrom, pathTo, loading, result, error, onClear }: Props) {
+export default function PathPanel({
+  pathFrom, pathTo, loading, result, error, onClear,
+  onSave, saving, saved, saveError,
+}: Props) {
   const instruction = !pathFrom
     ? 'Click a node to set the origin'
     : !pathTo
@@ -103,6 +110,22 @@ export default function PathPanel({ pathFrom, pathTo, loading, result, error, on
               </li>
             ))}
           </ol>
+
+          {onSave && (
+            <div className="mt-4 pt-3 border-t border-gray-100">
+              {saveError && (
+                <p className="text-xs text-red-500 mb-2">{saveError}</p>
+              )}
+              <button
+                onClick={onSave}
+                disabled={saving || saved}
+                className="w-full py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-60
+                  bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 disabled:bg-indigo-400 disabled:border-indigo-400"
+              >
+                {saved ? 'Saved!' : saving ? 'Saving…' : 'Save Route'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

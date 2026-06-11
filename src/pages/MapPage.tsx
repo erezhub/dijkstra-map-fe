@@ -17,6 +17,7 @@ import Navbar from '../components/Navbar'
 import NodeSidebar from '../components/NodeSidebar'
 import AddNodeModal from '../components/AddNodeModal'
 import PathPanel from '../components/PathPanel'
+import RoutesPanel from '../components/RoutesPanel'
 
 interface ApiNode {
   name: string
@@ -94,6 +95,14 @@ export default function MapPage() {
   const [pathError, setPathError] = useState<string | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
 
+  // Save route
+  const [routeSaving, setRouteSaving] = useState(false)
+  const [routeSaved, setRouteSaved] = useState(false)
+  const [routeSaveError, setRouteSaveError] = useState<string | null>(null)
+
+  // Saved routes panel
+  const [routesMode, setRoutesMode] = useState(false)
+
   const selectedApiNode = apiNodes.find((n) => n.name === selectedNodeName) ?? null
 
   const refreshMap = useCallback(async () => {
@@ -121,6 +130,8 @@ export default function MapPage() {
     setPathLoading(true)
     setPathError(null)
     setPathResult(null)
+    setRouteSaved(false)
+    setRouteSaveError(null)
     mapClient
       .get<PathResult>('/map/path', { params: { from: pathFrom, to: pathTo } })
       .then(({ data }) => setPathResult(data))
@@ -138,19 +149,65 @@ export default function MapPage() {
     setPathTo(null)
     setPathResult(null)
     setPathError(null)
+    setRouteSaved(false)
+    setRouteSaveError(null)
   }, [])
 
   const togglePathMode = useCallback(() => {
     setPathMode((prev) => {
-      if (prev) {
+      if (!prev) setRoutesMode(false)
+      else {
         setPathFrom(null)
         setPathTo(null)
         setPathResult(null)
         setPathError(null)
+        setRouteSaved(false)
+        setRouteSaveError(null)
         setSelectedNodeName(null)
       }
       return !prev
     })
+  }, [])
+
+  const toggleRoutesMode = useCallback(() => {
+    setRoutesMode((prev) => {
+      if (!prev) {
+        setPathMode(false)
+        setPathFrom(null)
+        setPathTo(null)
+        setPathResult(null)
+        setPathError(null)
+        setRouteSaved(false)
+        setRouteSaveError(null)
+        setSelectedNodeName(null)
+      }
+      return !prev
+    })
+  }, [])
+
+  const handleSaveRoute = useCallback(async () => {
+    if (!pathFrom || !pathTo) return
+    setRouteSaving(true)
+    setRouteSaveError(null)
+    setRouteSaved(false)
+    try {
+      await mapClient.post('/map/route', null, { params: { from: pathFrom, to: pathTo } })
+      setRouteSaved(true)
+    } catch (err: unknown) {
+      setRouteSaveError(
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+          'Save failed'
+      )
+    } finally {
+      setRouteSaving(false)
+    }
+  }, [pathFrom, pathTo])
+
+  const handleShowRoute = useCallback((from: string, to: string, result: PathResult) => {
+    setPathFrom(from)
+    setPathTo(to)
+    setPathResult(result)
+    setPathError(null)
   }, [])
 
   // Highlight sets derived from path result
@@ -167,11 +224,13 @@ export default function MapPage() {
     return new Set(pathResult.path.map((s) => [s.from, s.to].sort().join('|')))
   }, [pathResult])
 
+  const highlightActive = pathMode || routesMode
+
   // Overlay path highlight styles without touching the base node state
   const displayNodes = useMemo(
     () =>
       nodes.map((n) => {
-        if (!pathMode) return n
+        if (!highlightActive) return n
         const isEndpoint = n.id === pathFrom || n.id === pathTo
         const inPath = pathNodeSet.has(n.id)
         if (isEndpoint)
@@ -180,16 +239,16 @@ export default function MapPage() {
           return { ...n, style: { ...BASE_NODE_STYLE, border: '2px solid #f97316', background: '#ffedd5' } }
         return n
       }),
-    [nodes, pathMode, pathFrom, pathTo, pathNodeSet]
+    [nodes, highlightActive, pathFrom, pathTo, pathNodeSet]
   )
 
   const displayEdges = useMemo(
     () =>
       edges.map((e) => {
-        if (!pathMode || !pathEdgeSet.has(e.id)) return e
+        if (!highlightActive || !pathEdgeSet.has(e.id)) return e
         return { ...e, style: { stroke: '#f97316', strokeWidth: 3 }, animated: true }
       }),
-    [edges, pathMode, pathEdgeSet]
+    [edges, highlightActive, pathEdgeSet]
   )
 
   const onNodeClick: NodeMouseHandler = useCallback(
@@ -250,6 +309,20 @@ export default function MapPage() {
           </svg>
           Find Path
         </button>
+        <button
+          onClick={toggleRoutesMode}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            routesMode
+              ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700'
+              : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+          </svg>
+          Saved Routes
+        </button>
         {pathMode && (
           <span className="text-xs text-gray-400 italic">
             {!pathFrom ? 'Click a node to select origin' : !pathTo ? `From: ${pathFrom} — click destination` : `${pathFrom} → ${pathTo}`}
@@ -298,7 +371,12 @@ export default function MapPage() {
             )}
           </div>
 
-          {pathMode ? (
+          {routesMode ? (
+            <RoutesPanel
+              onShowRoute={handleShowRoute}
+              onClearRoute={clearPath}
+            />
+          ) : pathMode ? (
             <PathPanel
               pathFrom={pathFrom}
               pathTo={pathTo}
@@ -306,6 +384,10 @@ export default function MapPage() {
               result={pathResult}
               error={pathError}
               onClear={clearPath}
+              onSave={pathResult ? handleSaveRoute : undefined}
+              saving={routeSaving}
+              saved={routeSaved}
+              saveError={routeSaveError}
             />
           ) : (
             selectedApiNode && (
