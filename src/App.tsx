@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import LoginPage from './pages/LoginPage'
+import MapPage from './pages/MapPage'
 
 function App() {
   return (
@@ -13,7 +14,7 @@ function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <div className="p-8 text-gray-700">Map goes here</div>
+                <MapPage />
               </ProtectedRoute>
             }
           />
