@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   ReactFlow,
   Background,
@@ -6,8 +6,8 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
-  type Node,
-  type Edge,
+  type Node as FlowNode,
+  type Edge as FlowEdge,
   type NodeMouseHandler,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -16,6 +16,7 @@ import { useAuth } from '../contexts/AuthContext'
 import Navbar from '../components/Navbar'
 import NodeSidebar from '../components/NodeSidebar'
 import AddNodeModal from '../components/AddNodeModal'
+import PathPanel from '../components/PathPanel'
 
 interface ApiNode {
   name: string
@@ -23,23 +24,36 @@ interface ApiNode {
   connections: Record<string, number>
 }
 
-function toFlowElements(apiNodes: ApiNode[]): { nodes: Node[]; edges: Edge[] } {
-  const nodes: Node[] = apiNodes.map((n) => ({
+interface PathSegment {
+  from: string
+  to: string
+  distance: number
+}
+
+interface PathResult {
+  distance: number
+  path: PathSegment[]
+}
+
+const BASE_NODE_STYLE = {
+  background: '#fff',
+  border: '2px solid #6366f1',
+  borderRadius: 8,
+  padding: '6px 14px',
+  fontWeight: 600,
+  fontSize: 13,
+}
+
+function toFlowElements(apiNodes: ApiNode[]): { nodes: FlowNode[]; edges: FlowEdge[] } {
+  const nodes: FlowNode[] = apiNodes.map((n) => ({
     id: n.name,
     position: n.position,
     data: { label: n.name },
-    style: {
-      background: '#fff',
-      border: '2px solid #6366f1',
-      borderRadius: 8,
-      padding: '6px 14px',
-      fontWeight: 600,
-      fontSize: 13,
-    },
+    style: BASE_NODE_STYLE,
   }))
 
   const seen = new Set<string>()
-  const edges: Edge[] = []
+  const edges: FlowEdge[] = []
   for (const node of apiNodes) {
     for (const [target, weight] of Object.entries(node.connections)) {
       const key = [node.name, target].sort().join('|')
@@ -65,12 +79,20 @@ export default function MapPage() {
   const canEdit = role === 'ADMIN' || role === 'MANAGER'
 
   const [apiNodes, setApiNodes] = useState<ApiNode[]>([])
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedNodeName, setSelectedNodeName] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+
+  // Path finding
+  const [pathMode, setPathMode] = useState(false)
+  const [pathFrom, setPathFrom] = useState<string | null>(null)
+  const [pathTo, setPathTo] = useState<string | null>(null)
+  const [pathResult, setPathResult] = useState<PathResult | null>(null)
+  const [pathError, setPathError] = useState<string | null>(null)
+  const [pathLoading, setPathLoading] = useState(false)
 
   const selectedApiNode = apiNodes.find((n) => n.name === selectedNodeName) ?? null
 
@@ -93,26 +115,147 @@ export default function MapPage() {
       .finally(() => setLoading(false))
   }, [refreshMap])
 
-  const onNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => setSelectedNodeName(node.id),
-    []
+  // Fire path query when both endpoints are set
+  useEffect(() => {
+    if (!pathFrom || !pathTo) return
+    setPathLoading(true)
+    setPathError(null)
+    setPathResult(null)
+    mapClient
+      .get<PathResult>('/map/path', { params: { from: pathFrom, to: pathTo } })
+      .then(({ data }) => setPathResult(data))
+      .catch((err: unknown) => {
+        setPathError(
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+            'No path found'
+        )
+      })
+      .finally(() => setPathLoading(false))
+  }, [pathFrom, pathTo])
+
+  const clearPath = useCallback(() => {
+    setPathFrom(null)
+    setPathTo(null)
+    setPathResult(null)
+    setPathError(null)
+  }, [])
+
+  const togglePathMode = useCallback(() => {
+    setPathMode((prev) => {
+      if (prev) {
+        setPathFrom(null)
+        setPathTo(null)
+        setPathResult(null)
+        setPathError(null)
+        setSelectedNodeName(null)
+      }
+      return !prev
+    })
+  }, [])
+
+  // Highlight sets derived from path result
+  const pathNodeSet = useMemo(() => {
+    const set = new Set<string>()
+    if (pathFrom) set.add(pathFrom)
+    if (pathTo) set.add(pathTo)
+    pathResult?.path.forEach((s) => { set.add(s.from); set.add(s.to) })
+    return set
+  }, [pathFrom, pathTo, pathResult])
+
+  const pathEdgeSet = useMemo(() => {
+    if (!pathResult) return new Set<string>()
+    return new Set(pathResult.path.map((s) => [s.from, s.to].sort().join('|')))
+  }, [pathResult])
+
+  // Overlay path highlight styles without touching the base node state
+  const displayNodes = useMemo(
+    () =>
+      nodes.map((n) => {
+        if (!pathMode) return n
+        const isEndpoint = n.id === pathFrom || n.id === pathTo
+        const inPath = pathNodeSet.has(n.id)
+        if (isEndpoint)
+          return { ...n, style: { ...BASE_NODE_STYLE, border: '2px solid #f59e0b', background: '#fef3c7' } }
+        if (inPath)
+          return { ...n, style: { ...BASE_NODE_STYLE, border: '2px solid #f97316', background: '#ffedd5' } }
+        return n
+      }),
+    [nodes, pathMode, pathFrom, pathTo, pathNodeSet]
   )
 
-  const onPaneClick = useCallback(() => setSelectedNodeName(null), [])
+  const displayEdges = useMemo(
+    () =>
+      edges.map((e) => {
+        if (!pathMode || !pathEdgeSet.has(e.id)) return e
+        return { ...e, style: { stroke: '#f97316', strokeWidth: 3 }, animated: true }
+      }),
+    [edges, pathMode, pathEdgeSet]
+  )
 
-  const onNodeDragStop: NodeMouseHandler = useCallback(
+  const onNodeClick: NodeMouseHandler = useCallback(
     (_event, node) => {
-      if (!canEdit) return
+      if (pathMode) {
+        if (!pathFrom) {
+          setPathFrom(node.id)
+        } else if (node.id === pathFrom) {
+          // Deselect origin
+          setPathFrom(null)
+          setPathTo(null)
+          setPathResult(null)
+          setPathError(null)
+        } else {
+          // Set destination (overwrites previous if already had a result)
+          setPathTo(node.id)
+          setPathResult(null)
+          setPathError(null)
+        }
+        return
+      }
+      setSelectedNodeName(node.id)
+    },
+    [pathMode, pathFrom]
+  )
+
+  const onPaneClick = useCallback(() => {
+    if (!pathMode) setSelectedNodeName(null)
+  }, [pathMode])
+
+  const onNodeDragStop = useCallback(
+    (_event: MouseEvent | TouchEvent, node: FlowNode) => {
+      if (!canEdit || pathMode) return
       mapClient
         .put(`/map/node/${node.id}`, { position: node.position })
         .catch(console.error)
     },
-    [canEdit]
+    [canEdit, pathMode]
   )
 
   return (
     <div className="flex flex-col h-screen">
       <Navbar />
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 bg-white shrink-0">
+        <button
+          onClick={togglePathMode}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            pathMode
+              ? 'bg-orange-500 text-white border-orange-500 hover:bg-orange-600'
+              : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+          </svg>
+          Find Path
+        </button>
+        {pathMode && (
+          <span className="text-xs text-gray-400 italic">
+            {!pathFrom ? 'Click a node to select origin' : !pathTo ? `From: ${pathFrom} — click destination` : `${pathFrom} → ${pathTo}`}
+          </span>
+        )}
+      </div>
 
       {loading && (
         <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -128,14 +271,14 @@ export default function MapPage() {
         <div className="flex flex-1 overflow-hidden">
           <div className="flex-1 relative">
             <ReactFlow
-              nodes={nodes}
-              edges={edges}
+              nodes={displayNodes}
+              edges={displayEdges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onNodeClick={onNodeClick}
               onPaneClick={onPaneClick}
               onNodeDragStop={onNodeDragStop}
-              nodesDraggable={canEdit}
+              nodesDraggable={canEdit && !pathMode}
               fitView
               fitViewOptions={{ padding: 0.2 }}
             >
@@ -144,7 +287,7 @@ export default function MapPage() {
               <MiniMap nodeColor="#6366f1" />
             </ReactFlow>
 
-            {canEdit && (
+            {canEdit && !pathMode && (
               <button
                 onClick={() => setShowAddModal(true)}
                 className="absolute bottom-4 right-4 z-10 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full w-12 h-12 text-2xl font-light shadow-lg flex items-center justify-center"
@@ -155,17 +298,28 @@ export default function MapPage() {
             )}
           </div>
 
-          {selectedApiNode && (
-            <NodeSidebar
-              node={selectedApiNode}
-              canEdit={canEdit}
-              onClose={() => setSelectedNodeName(null)}
-              onSaved={() => refreshMap().catch(console.error)}
-              onDeleted={() => {
-                setSelectedNodeName(null)
-                refreshMap().catch(console.error)
-              }}
+          {pathMode ? (
+            <PathPanel
+              pathFrom={pathFrom}
+              pathTo={pathTo}
+              loading={pathLoading}
+              result={pathResult}
+              error={pathError}
+              onClear={clearPath}
             />
+          ) : (
+            selectedApiNode && (
+              <NodeSidebar
+                node={selectedApiNode}
+                canEdit={canEdit}
+                onClose={() => setSelectedNodeName(null)}
+                onSaved={() => refreshMap().catch(console.error)}
+                onDeleted={() => {
+                  setSelectedNodeName(null)
+                  refreshMap().catch(console.error)
+                }}
+              />
+            )
           )}
         </div>
       )}
