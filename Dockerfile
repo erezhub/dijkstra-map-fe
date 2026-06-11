@@ -1,7 +1,7 @@
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 COPY . .
 ARG VITE_MAP_URL=http://localhost:8080
 ARG VITE_USER_URL=http://localhost:8081

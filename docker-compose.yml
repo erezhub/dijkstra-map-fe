@@ -1,0 +1,13 @@
+services:
+  frontend:
+    image: dijkstra-map-fe:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_MAP_URL: ${VITE_MAP_URL:-http://localhost:8080}
+        VITE_USER_URL: ${VITE_USER_URL:-http://localhost:8081}
+    container_name: frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
