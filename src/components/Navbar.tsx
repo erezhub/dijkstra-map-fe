@@ -26,6 +26,7 @@ export default function Navbar() {
         <span className="font-semibold tracking-wide">Dijkstra Map</span>
         {navLink('/', 'Map')}
         {canManageUsers && navLink('/users', 'Users')}
+        {navLink('/profile', 'Profile')}
       </div>
       <div className="flex items-center gap-4 text-sm">
         <span className="text-gray-400">{role}</span>
