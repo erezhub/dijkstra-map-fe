@@ -5,7 +5,8 @@ type Role = 'ADMIN' | 'MANAGER' | 'REGULAR'
 
 interface AuthState {
   token: string | null
-  role: Role | null
+  role: Role | null,
+  username: string | null
 }
 
 interface AuthContextValue extends AuthState {
@@ -19,6 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthState>(() => ({
     token: localStorage.getItem('token'),
     role: localStorage.getItem('role') as Role | null,
+    username: localStorage.getItem('username')
   }))
 
   async function login(identifier: string, password: string) {
@@ -26,12 +28,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       identifier,
       password,
     })
-    const meRes = await userClient.get<{ role: Role }>('/users/me', {
+    const meRes = await userClient.get<{ role: Role, username: string }>('/users/me', {
       headers: { Authorization: `Bearer ${data.token}` },
     })
     localStorage.setItem('token', data.token)
     localStorage.setItem('role', meRes.data.role)
-    setAuth({ token: data.token, role: meRes.data.role })
+    localStorage.setItem('username', meRes.data.username)
+    setAuth({ token: data.token, role: meRes.data.role, username: meRes.data.username })
   }
 
   async function logout() {
@@ -40,7 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       localStorage.removeItem('token')
       localStorage.removeItem('role')
-      setAuth({ token: null, role: null })
+      localStorage.removeItem('username')
+      setAuth({ token: null, role: null, username: null })
     }
   }
 

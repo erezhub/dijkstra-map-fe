@@ -2,7 +2,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Navbar() {
-  const { role, logout } = useAuth()
+  const { role, username, logout } = useAuth()
   const location = useLocation()
   const canManageUsers = role === 'ADMIN' || role === 'MANAGER'
 
@@ -29,7 +29,7 @@ export default function Navbar() {
         {navLink('/profile', 'Profile')}
       </div>
       <div className="flex items-center gap-4 text-sm">
-        <span className="text-gray-400">{role}</span>
+        <span className="text-gray-400">{username}</span>
         <button
           onClick={logout}
           className="text-gray-300 hover:text-white transition-colors"
