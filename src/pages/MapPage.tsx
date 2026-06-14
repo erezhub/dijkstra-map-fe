@@ -46,6 +46,8 @@ const BASE_NODE_STYLE = {
   padding: '6px 14px',
   fontWeight: 600,
   fontSize: 13,
+  minWidth: 50,
+  width: 'fit-content',
 }
 
 function toFlowElements(apiNodes: ApiNode[]): { nodes: FlowNode[]; edges: FlowEdge[] } {
