@@ -42,14 +42,14 @@ export default function LoginPage() {
         )}
 
         <div className="space-y-1">
-          <label className="text-sm text-gray-600">Username / Email</label>
+          <label className="text-sm text-gray-600">Email</label>
           <input
             type="text"
             value={identifier}
             onChange={(e) => setIdentifier(e.target.value)}
             required
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-            placeholder="admin or user@example.com"
+            placeholder="your@email.com"
           />
         </div>
 
