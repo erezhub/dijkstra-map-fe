@@ -110,6 +110,7 @@ export default function NodeSidebar({ node, allNodes, canEdit, onClose, onSaved,
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
+            maxLength={50}
             className="mt-1 w-full border border-gray-200 rounded px-2 py-1 text-sm"
           />
         </div>

@@ -82,6 +82,7 @@ export default function AddNodeModal({ allNodes, onClose, onSaved }: Props) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            maxLength={50}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
           />
         </div>
