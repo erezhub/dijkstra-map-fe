@@ -2,33 +2,52 @@ import { useState } from 'react'
 import mapClient from '../api/mapClient'
 
 interface ApiNode {
+  id: string
   name: string
   position: { x: number; y: number }
-  connections: Record<string, number>
+  connections: Record<string, number> // keys are node IDs
+}
+
+interface ConnRow {
+  id: string
+  name: string
+  weight: string
 }
 
 interface Props {
   node: ApiNode
+  allNodes: ApiNode[]
   canEdit: boolean
   onClose: () => void
   onSaved: () => void
   onDeleted: () => void
 }
 
-export default function NodeSidebar({ node, canEdit, onClose, onSaved, onDeleted }: Props) {
-  const [conns, setConns] = useState(
-    Object.entries(node.connections).map(([n, w]) => ({ node: n, weight: String(w) }))
+export default function NodeSidebar({ node, allNodes, canEdit, onClose, onSaved, onDeleted }: Props) {
+  const [name, setName] = useState(node.name)
+  const [conns, setConns] = useState<ConnRow[]>(
+    Object.entries(node.connections).map(([id, w]) => ({
+      id,
+      name: allNodes.find((n) => n.id === id)?.name ?? id,
+      weight: String(w),
+    }))
   )
-  const [newNode, setNewNode] = useState('')
+  const [newNodeId, setNewNodeId] = useState('')
   const [newWeight, setNewWeight] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const availableNodes = allNodes.filter(
+    (n) => n.id !== node.id && !conns.some((c) => c.id === n.id)
+  )
+
   function addRow() {
-    if (!newNode.trim() || !newWeight.trim()) return
-    setConns((prev) => [...prev, { node: newNode.trim(), weight: newWeight.trim() }])
-    setNewNode('')
+    if (!newNodeId || !newWeight.trim()) return
+    const target = allNodes.find((n) => n.id === newNodeId)
+    if (!target) return
+    setConns((prev) => [...prev, { id: newNodeId, name: target.name, weight: newWeight.trim() }])
+    setNewNodeId('')
     setNewWeight('')
   }
 
@@ -41,11 +60,11 @@ export default function NodeSidebar({ node, canEdit, onClose, onSaved, onDeleted
     setSaving(true)
     try {
       const connections = Object.fromEntries(
-        conns
-          .filter((c) => c.node.trim() && c.weight.trim())
-          .map((c) => [c.node.trim(), Number(c.weight)])
+        conns.filter((c) => c.id && c.weight.trim()).map((c) => [c.id, Number(c.weight)])
       )
-      await mapClient.put(`/map/node/${node.name}`, { connections })
+      const body: Record<string, unknown> = { connections }
+      if (name.trim() && name.trim() !== node.name) body.newName = name.trim()
+      await mapClient.put(`/map/node/${node.id}`, body)
       onSaved()
     } catch (err: unknown) {
       setError(
@@ -61,7 +80,7 @@ export default function NodeSidebar({ node, canEdit, onClose, onSaved, onDeleted
     if (!confirm(`Delete node "${node.name}"?`)) return
     setDeleting(true)
     try {
-      await mapClient.delete(`/map/node/${node.name}`)
+      await mapClient.delete(`/map/node/${node.id}`)
       onDeleted()
     } catch (err: unknown) {
       setError(
@@ -81,11 +100,22 @@ export default function NodeSidebar({ node, canEdit, onClose, onSaved, onDeleted
         </button>
       </div>
 
-      <div className="px-4 py-3 text-xs text-gray-500">
+      <div className="px-4 py-2 text-xs text-gray-500">
         Position: ({Math.round(node.position.x)}, {Math.round(node.position.y)})
       </div>
 
-      <div className="px-4 flex-1">
+      {canEdit && (
+        <div className="px-4 py-2 border-b border-gray-100">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="mt-1 w-full border border-gray-200 rounded px-2 py-1 text-sm"
+          />
+        </div>
+      )}
+
+      <div className="px-4 flex-1 pt-3">
         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
           Connections
         </p>
@@ -97,7 +127,7 @@ export default function NodeSidebar({ node, canEdit, onClose, onSaved, onDeleted
         <div className="space-y-1 mb-3">
           {conns.map((c, i) => (
             <div key={i} className="flex items-center gap-2 text-sm">
-              <span className="flex-1 font-medium text-gray-700">{c.node}</span>
+              <span className="flex-1 font-medium text-gray-700">{c.name}</span>
               {canEdit ? (
                 <input
                   type="number"
@@ -126,12 +156,16 @@ export default function NodeSidebar({ node, canEdit, onClose, onSaved, onDeleted
 
         {canEdit && (
           <div className="flex gap-1 mb-4">
-            <input
-              placeholder="Node"
-              value={newNode}
-              onChange={(e) => setNewNode(e.target.value)}
-              className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 text-sm"
-            />
+            <select
+              value={newNodeId}
+              onChange={(e) => setNewNodeId(e.target.value)}
+              className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 text-sm text-gray-700"
+            >
+              <option value="">Add connection…</option>
+              {availableNodes.map((n) => (
+                <option key={n.id} value={n.id}>{n.name}</option>
+              ))}
+            </select>
             <input
               placeholder="Wt"
               type="number"

@@ -1,5 +1,7 @@
 interface PathSegment {
+  fromId: string
   from: string
+  toId: string
   to: string
   distance: number
 }
@@ -10,8 +12,8 @@ interface PathResult {
 }
 
 interface Props {
-  pathFrom: string | null
-  pathTo: string | null
+  pathFromName: string | null
+  pathToName: string | null
   loading: boolean
   result: PathResult | null
   error: string | null
@@ -23,12 +25,12 @@ interface Props {
 }
 
 export default function PathPanel({
-  pathFrom, pathTo, loading, result, error, onClear,
+  pathFromName, pathToName, loading, result, error, onClear,
   onSave, saving, saved, saveError,
 }: Props) {
-  const instruction = !pathFrom
+  const instruction = !pathFromName
     ? 'Click a node to set the origin'
-    : !pathTo
+    : !pathToName
       ? 'Click another node to set the destination'
       : null
 
@@ -47,9 +49,9 @@ export default function PathPanel({
       <div className="px-4 py-3 space-y-2">
         <div className="flex items-center gap-2 text-sm">
           <span className="w-8 text-xs font-semibold text-amber-600 uppercase">From</span>
-          {pathFrom ? (
+          {pathFromName ? (
             <span className="flex-1 font-medium text-gray-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
-              {pathFrom}
+              {pathFromName}
             </span>
           ) : (
             <span className="flex-1 text-gray-400 italic text-xs">not selected</span>
@@ -57,9 +59,9 @@ export default function PathPanel({
         </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="w-8 text-xs font-semibold text-orange-600 uppercase">To</span>
-          {pathTo ? (
+          {pathToName ? (
             <span className="flex-1 font-medium text-gray-800 bg-orange-50 border border-orange-200 rounded px-2 py-0.5">
-              {pathTo}
+              {pathToName}
             </span>
           ) : (
             <span className="flex-1 text-gray-400 italic text-xs">not selected</span>

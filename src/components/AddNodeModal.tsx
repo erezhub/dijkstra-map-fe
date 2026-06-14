@@ -1,25 +1,37 @@
 import { useState, type FormEvent } from 'react'
 import mapClient from '../api/mapClient'
+import type { ApiNode } from '../pages/MapPage'
+
+interface ConnRow {
+  id: string
+  name: string
+  weight: string
+}
 
 interface Props {
+  allNodes: ApiNode[]
   onClose: () => void
   onSaved: () => void
 }
 
-export default function AddNodeModal({ onClose, onSaved }: Props) {
+export default function AddNodeModal({ allNodes, onClose, onSaved }: Props) {
   const [name, setName] = useState('')
   const [x, setX] = useState('0')
   const [y, setY] = useState('0')
-  const [conns, setConns] = useState<Array<{ node: string; weight: string }>>([])
-  const [newNode, setNewNode] = useState('')
+  const [conns, setConns] = useState<ConnRow[]>([])
+  const [newNodeId, setNewNodeId] = useState('')
   const [newWeight, setNewWeight] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const availableNodes = allNodes.filter((n) => !conns.some((c) => c.id === n.id))
+
   function addRow() {
-    if (!newNode.trim() || !newWeight.trim()) return
-    setConns((prev) => [...prev, { node: newNode.trim(), weight: newWeight.trim() }])
-    setNewNode('')
+    if (!newNodeId || !newWeight.trim()) return
+    const target = allNodes.find((n) => n.id === newNodeId)
+    if (!target) return
+    setConns((prev) => [...prev, { id: newNodeId, name: target.name, weight: newWeight.trim() }])
+    setNewNodeId('')
     setNewWeight('')
   }
 
@@ -29,9 +41,7 @@ export default function AddNodeModal({ onClose, onSaved }: Props) {
     setSaving(true)
     try {
       const connections = Object.fromEntries(
-        conns
-          .filter((c) => c.node.trim() && c.weight.trim())
-          .map((c) => [c.node.trim(), Number(c.weight)])
+        conns.filter((c) => c.id && c.weight.trim()).map((c) => [c.id, Number(c.weight)])
       )
       await mapClient.post('/map/node', {
         name: name.trim(),
@@ -102,7 +112,7 @@ export default function AddNodeModal({ onClose, onSaved }: Props) {
           <div className="space-y-1 mb-2">
             {conns.map((c, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
-                <span className="flex-1 font-medium text-gray-700">{c.node}</span>
+                <span className="flex-1 font-medium text-gray-700">{c.name}</span>
                 <span className="text-gray-500 w-10 text-right">{c.weight}</span>
                 <button
                   type="button"
@@ -115,12 +125,16 @@ export default function AddNodeModal({ onClose, onSaved }: Props) {
             ))}
           </div>
           <div className="flex gap-1">
-            <input
-              placeholder="Node name"
-              value={newNode}
-              onChange={(e) => setNewNode(e.target.value)}
-              className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 text-sm"
-            />
+            <select
+              value={newNodeId}
+              onChange={(e) => setNewNodeId(e.target.value)}
+              className="flex-1 min-w-0 border border-gray-200 rounded px-2 py-1 text-sm text-gray-700"
+            >
+              <option value="">Select node…</option>
+              {availableNodes.map((n) => (
+                <option key={n.id} value={n.id}>{n.name}</option>
+              ))}
+            </select>
             <input
               placeholder="Wt"
               type="number"

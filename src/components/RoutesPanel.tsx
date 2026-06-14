@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import mapClient from '../api/mapClient'
 
 interface PathSegment {
+  fromId: string
   from: string
+  toId: string
   to: string
   distance: number
 }
@@ -13,7 +15,9 @@ interface PathResult {
 }
 
 interface SavedRoute {
+  nodeAId: string
   nodeA: string
+  nodeBId: string
   nodeB: string
   distance: number
   path: PathSegment[]
@@ -21,7 +25,7 @@ interface SavedRoute {
 }
 
 interface Props {
-  onShowRoute: (from: string, to: string, result: PathResult) => void
+  onShowRoute: (fromId: string, toId: string, result: PathResult) => void
   onClearRoute: () => void
 }
 
@@ -54,22 +58,22 @@ export default function RoutesPanel({ onShowRoute, onClearRoute }: Props) {
   }, [loadRoutes])
 
   function showRoute(route: SavedRoute) {
-    const key = `${route.nodeA}|${route.nodeB}`
+    const key = `${route.nodeAId}|${route.nodeBId}`
     if (activeKey === key) {
       setActiveKey(null)
       onClearRoute()
       return
     }
     setActiveKey(key)
-    onShowRoute(route.nodeA, route.nodeB, { distance: route.distance, path: route.path })
+    onShowRoute(route.nodeAId, route.nodeBId, { distance: route.distance, path: route.path })
   }
 
-  async function deleteRoute(nodeA: string, nodeB: string) {
-    const key = `${nodeA}|${nodeB}`
+  async function deleteRoute(nodeAId: string, nodeBId: string) {
+    const key = `${nodeAId}|${nodeBId}`
     setDeletingKey(key)
     setDeleteError(null)
     try {
-      await mapClient.delete('/map/route', { params: { from: nodeA, to: nodeB } })
+      await mapClient.delete('/map/route', { params: { from: nodeAId, to: nodeBId } })
       if (activeKey === key) setActiveKey(null)
       await loadRoutes()
     } catch (err: unknown) {
@@ -126,7 +130,7 @@ export default function RoutesPanel({ onShowRoute, onClearRoute }: Props) {
       {!loading && !error && routes.length > 0 && (
         <ol className="flex-1 overflow-y-auto divide-y divide-gray-100">
           {routes.map((route) => {
-            const key = `${route.nodeA}|${route.nodeB}`
+            const key = `${route.nodeAId}|${route.nodeBId}`
             const isActive = activeKey === key
             const isDeleting = deletingKey === key
             return (
@@ -156,7 +160,7 @@ export default function RoutesPanel({ onShowRoute, onClearRoute }: Props) {
                     {isActive ? 'Shown' : 'Show'}
                   </button>
                   <button
-                    onClick={() => deleteRoute(route.nodeA, route.nodeB)}
+                    onClick={() => deleteRoute(route.nodeAId, route.nodeBId)}
                     disabled={isDeleting}
                     className="px-2 text-xs py-1 rounded font-medium border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-50"
                   >

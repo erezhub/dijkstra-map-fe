@@ -19,14 +19,17 @@ import AddNodeModal from '../components/AddNodeModal'
 import PathPanel from '../components/PathPanel'
 import RoutesPanel from '../components/RoutesPanel'
 
-interface ApiNode {
+export interface ApiNode {
+  id: string
   name: string
   position: { x: number; y: number }
-  connections: Record<string, number>
+  connections: Record<string, number> // keys are node IDs
 }
 
-interface PathSegment {
+export interface PathSegment {
+  fromId: string
   from: string
+  toId: string
   to: string
   distance: number
 }
@@ -47,7 +50,7 @@ const BASE_NODE_STYLE = {
 
 function toFlowElements(apiNodes: ApiNode[]): { nodes: FlowNode[]; edges: FlowEdge[] } {
   const nodes: FlowNode[] = apiNodes.map((n) => ({
-    id: n.name,
+    id: n.id,
     position: n.position,
     data: { label: n.name },
     style: BASE_NODE_STYLE,
@@ -56,14 +59,14 @@ function toFlowElements(apiNodes: ApiNode[]): { nodes: FlowNode[]; edges: FlowEd
   const seen = new Set<string>()
   const edges: FlowEdge[] = []
   for (const node of apiNodes) {
-    for (const [target, weight] of Object.entries(node.connections)) {
-      const key = [node.name, target].sort().join('|')
+    for (const [targetId, weight] of Object.entries(node.connections)) {
+      const key = [node.id, targetId].sort().join('|')
       if (!seen.has(key)) {
         seen.add(key)
         edges.push({
           id: key,
-          source: node.name,
-          target,
+          source: node.id,
+          target: targetId,
           label: String(weight),
           labelStyle: { fontSize: 11, fontWeight: 600 },
           labelBgStyle: { fill: '#f3f4f6', fillOpacity: 0.9 },
@@ -84,13 +87,13 @@ export default function MapPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedNodeName, setSelectedNodeName] = useState<string | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
 
   // Path finding
   const [pathMode, setPathMode] = useState(false)
-  const [pathFrom, setPathFrom] = useState<string | null>(null)
-  const [pathTo, setPathTo] = useState<string | null>(null)
+  const [pathFrom, setPathFrom] = useState<string | null>(null) // node ID
+  const [pathTo, setPathTo] = useState<string | null>(null)     // node ID
   const [pathResult, setPathResult] = useState<PathResult | null>(null)
   const [pathError, setPathError] = useState<string | null>(null)
   const [pathLoading, setPathLoading] = useState(false)
@@ -103,7 +106,17 @@ export default function MapPage() {
   // Saved routes panel
   const [routesMode, setRoutesMode] = useState(false)
 
-  const selectedApiNode = apiNodes.find((n) => n.name === selectedNodeName) ?? null
+  const selectedApiNode = apiNodes.find((n) => n.id === selectedNodeId) ?? null
+
+  // Resolve IDs to names for display
+  const pathFromName = useMemo(
+    () => apiNodes.find((n) => n.id === pathFrom)?.name ?? null,
+    [apiNodes, pathFrom]
+  )
+  const pathToName = useMemo(
+    () => apiNodes.find((n) => n.id === pathTo)?.name ?? null,
+    [apiNodes, pathTo]
+  )
 
   const refreshMap = useCallback(async () => {
     const { data } = await mapClient.get<{ nodes: ApiNode[] }>('/map')
@@ -163,7 +176,7 @@ export default function MapPage() {
         setPathError(null)
         setRouteSaved(false)
         setRouteSaveError(null)
-        setSelectedNodeName(null)
+        setSelectedNodeId(null)
       }
       return !prev
     })
@@ -179,7 +192,7 @@ export default function MapPage() {
         setPathError(null)
         setRouteSaved(false)
         setRouteSaveError(null)
-        setSelectedNodeName(null)
+        setSelectedNodeId(null)
       }
       return !prev
     })
@@ -203,25 +216,25 @@ export default function MapPage() {
     }
   }, [pathFrom, pathTo])
 
-  const handleShowRoute = useCallback((from: string, to: string, result: PathResult) => {
-    setPathFrom(from)
-    setPathTo(to)
+  const handleShowRoute = useCallback((fromId: string, toId: string, result: PathResult) => {
+    setPathFrom(fromId)
+    setPathTo(toId)
     setPathResult(result)
     setPathError(null)
   }, [])
 
-  // Highlight sets derived from path result
+  // Highlight sets derived from path result (all IDs)
   const pathNodeSet = useMemo(() => {
     const set = new Set<string>()
     if (pathFrom) set.add(pathFrom)
     if (pathTo) set.add(pathTo)
-    pathResult?.path.forEach((s) => { set.add(s.from); set.add(s.to) })
+    pathResult?.path.forEach((s) => { set.add(s.fromId); set.add(s.toId) })
     return set
   }, [pathFrom, pathTo, pathResult])
 
   const pathEdgeSet = useMemo(() => {
     if (!pathResult) return new Set<string>()
-    return new Set(pathResult.path.map((s) => [s.from, s.to].sort().join('|')))
+    return new Set(pathResult.path.map((s) => [s.fromId, s.toId].sort().join('|')))
   }, [pathResult])
 
   const highlightActive = pathMode || routesMode
@@ -257,26 +270,24 @@ export default function MapPage() {
         if (!pathFrom) {
           setPathFrom(node.id)
         } else if (node.id === pathFrom) {
-          // Deselect origin
           setPathFrom(null)
           setPathTo(null)
           setPathResult(null)
           setPathError(null)
         } else {
-          // Set destination (overwrites previous if already had a result)
           setPathTo(node.id)
           setPathResult(null)
           setPathError(null)
         }
         return
       }
-      setSelectedNodeName(node.id)
+      setSelectedNodeId(node.id)
     },
     [pathMode, pathFrom]
   )
 
   const onPaneClick = useCallback(() => {
-    if (!pathMode) setSelectedNodeName(null)
+    if (!pathMode) setSelectedNodeId(null)
   }, [pathMode])
 
   const onNodeDragStop = useCallback(
@@ -325,7 +336,11 @@ export default function MapPage() {
         </button>
         {pathMode && (
           <span className="text-xs text-gray-400 italic">
-            {!pathFrom ? 'Click a node to select origin' : !pathTo ? `From: ${pathFrom} — click destination` : `${pathFrom} → ${pathTo}`}
+            {!pathFrom
+              ? 'Click a node to select origin'
+              : !pathTo
+                ? `From: ${pathFromName ?? pathFrom} — click destination`
+                : `${pathFromName ?? pathFrom} → ${pathToName ?? pathTo}`}
           </span>
         )}
       </div>
@@ -378,8 +393,8 @@ export default function MapPage() {
             />
           ) : pathMode ? (
             <PathPanel
-              pathFrom={pathFrom}
-              pathTo={pathTo}
+              pathFromName={pathFromName}
+              pathToName={pathToName}
               loading={pathLoading}
               result={pathResult}
               error={pathError}
@@ -392,12 +407,14 @@ export default function MapPage() {
           ) : (
             selectedApiNode && (
               <NodeSidebar
+                key={selectedApiNode.id}
                 node={selectedApiNode}
+                allNodes={apiNodes}
                 canEdit={canEdit}
-                onClose={() => setSelectedNodeName(null)}
+                onClose={() => setSelectedNodeId(null)}
                 onSaved={() => refreshMap().catch(console.error)}
                 onDeleted={() => {
-                  setSelectedNodeName(null)
+                  setSelectedNodeId(null)
                   refreshMap().catch(console.error)
                 }}
               />
@@ -408,6 +425,7 @@ export default function MapPage() {
 
       {showAddModal && (
         <AddNodeModal
+          allNodes={apiNodes}
           onClose={() => setShowAddModal(false)}
           onSaved={() => {
             setShowAddModal(false)
